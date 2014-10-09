@@ -31,10 +31,10 @@ let rec pattern_match (v : value) (p : pattern) : bool * environment =
   | PConstant Unit -> (v = VUnit, IdMap.empty)
   | PVar ident -> (true, IdMap.add ident (ref v) IdMap.empty)
   | PCons (p1, p2) -> (match v with
-    | VCons (v1, v2) -> 
+    | VCons (v1, v2) ->
       let (b1, e1) = pattern_match v1 p1
       and (b2, e2) = pattern_match v2 p2 in
-      if (b1 && b2) then 
+      if (b1 && b2) then
         (true, concat (snd (pattern_match v1 p1)) (snd (pattern_match v2 p2)))
       else (false, IdMap.empty)
     | _ -> (false, IdMap.empty))
@@ -42,40 +42,37 @@ let rec pattern_match (v : value) (p : pattern) : bool * environment =
 let update (x : id) (v : value) (env : environment) : unit =
   try (IdMap.find x env) := v with Not_found -> ()
 
-
-
 let look_up (x: id) (env: environment) : value = ! (IdMap.find x env)
 
 let rec eval (e : expr) (env : environment) : value =
   match e with
   | Constant c -> eval_const c
-  | BinaryOp (_,_,_) -> eval_operator env e
-  | UnaryOp (_,_) -> eval_operator env e
+  | BinaryOp _ | UnaryOp _  -> eval_operator env e
   | Var ident -> look_up ident env
   | Fun (ident,e) -> VClosure (env, ident, e)
   | Cons (h,t) -> VCons (eval h env, eval t env)
-  | IfThenElse (b,t,e) -> 
-    (match (eval b env) with 
+  | IfThenElse (b,t,e) ->
+    (match (eval b env) with
       | VBool b' -> eval (if b' then t else e) env
       | _ -> type_error b TBool)
-    (* ^ double check the code above (it might not evaluate laziliy) *)
   | Let (ident, e, e') -> eval (App (Fun (ident, e'), e)) env
   | LetRec (ident, e, e') -> begin
     let new_env = (IdMap.add ident (ref VUndef) env) in
       let v' = eval e new_env in
         eval e' ((fun () -> new_env) (update ident v' new_env))
-  end 
+  end
   | App (f, e) -> begin
     match (eval f env) with
-    | VClosure (env_f, ident, e_f) -> let v' = (eval e env) in 
+    | VClosure (env_f, ident, e_f) -> let v' = (eval e env) in
       (eval e_f (IdMap.add ident (ref v') env_f))
-    | _ -> failwith ("You cannot apply "^(expr_to_string f)^"; it is not a function")
-  end 
+    | _ -> failwith ("You cannot apply " ^ (expr_to_string f) ^
+                     "; it is not a function")
+  end
   | Match (e, ms) -> match_helper (eval e env) env ms
 
 and match_helper (v: value) (env: environment)
 (ms: (pattern * expr) list) : value =
-    match ms with 
+    match ms with
     | (p, e)::t -> let (b, env') = pattern_match v p in
         if b then eval e (concat env' env) else match_helper v env t
     | _ -> failwith "nonexhaustive pattern matching"
@@ -104,10 +101,7 @@ and eval_operator env = function
     | Gtq    -> eval_comp e1 e2 env (>=)
     | Ltq    -> eval_comp e1 e2 env (<=)
   end
-  | UnaryOp (op,e) -> 
-    (*not is the only unary operator in 3110 Caml, so I'm only going to
-      check whether e is a constant build from a Vbool--which is the only type
-      compatable with not. There's no need to pattern match op for now*)
+  | UnaryOp (Not,e) ->
     (match e with
     | Constant (Bool b) -> VBool (not b)
     | _ -> type_error e TBool)
